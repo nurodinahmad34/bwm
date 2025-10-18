@@ -27,7 +27,7 @@ systemctl start vnstat
 
 # Download main script
 echo -e "${YELLOW}📥 Downloading bandwidth monitor...${NC}"
-wget -q -O /usr/local/bin/bwm.sh "https://raw.githubusercontent.com/YOUR_USERNAME/bwm/main/bwm.sh"
+wget -q -O /usr/local/bin/bwm.sh "https://raw.githubusercontent.com/nurodinahmad34/bwm/main/bwm.sh"
 chmod +x /usr/local/bin/bwm.sh
 
 # Create log file
