@@ -1,47 +1,33 @@
-cat << 'EOF' > bwm-install.sh
+cat << 'EOF' > /tmp/bwm_complete.sh
 #!/bin/bash
 
-echo "🤖 BWM Bot Installer - Auto Setup"
-echo "=================================="
-
-# Config
-BOT_TOKEN="${1:-8054048255:AAHrEvs_qClO6DGXyiPzCcWJB8-D1KHekyQ}"
-CHAT_ID="${2:-5347438783}"
-
-echo "Bot Token: $BOT_TOKEN"
-echo "Chat ID: $CHAT_ID"
-echo ""
-
-# Cleanup previous installation
-echo "🛑 Cleaning up previous installation..."
-systemctl stop bwm-bot 2>/dev/null
-systemctl disable bwm-bot 2>/dev/null
-rm -f /usr/local/bin/bwm 2>/dev/null
-rm -f /etc/systemd/system/bwm-bot.service 2>/dev/null
-systemctl daemon-reload
+echo "🤖 Memulai instalasi BWM Bot Interaktif Lengkap..."
 
 # Install dependencies
-echo "🚀 Installing dependencies..."
+echo "🔧 Menginstall dependencies..."
 apt update && apt install -y vnstat bc curl jq
 
 # Setup vnstat
+echo "📊 Setup vnstat..."
 vnstat --add -i ens3
 systemctl enable vnstat
 systemctl start vnstat
 
-# Create main script
-echo "📝 Creating BWM script..."
-
+# Create main monitoring script
+echo "📝 Membuat script bwm interaktif..."
 cat > /usr/local/bin/bwm << 'SCRIPTEOF'
 #!/bin/bash
 
+# ================================
 # KONFIGURASI BOT TELEGRAM
-BOT_TOKEN="'"$BOT_TOKEN"'"
-CHAT_ID="'"$CHAT_ID"'"
+# ================================
+BOT_TOKEN="8054048255:AAHrEvs_qClO6DGXyiPzCcWJB8-D1KHekyQ"
+CHAT_ID="5347438783"
 
+# Konfigurasi lainnya
 LOG_FILE="/var/log/bwm.log"
 INTERFACE="ens3"
-BULANAN_LIMIT="3"
+BULANAN_LIMIT="5"
 
 # Fungsi untuk mencatat log
 catat_log() {
@@ -58,7 +44,7 @@ cek_dependensi() {
     done
 }
 
-# Fungsi untuk mendapatkan IP Address VPS
+# Fungsi untuk mendapatkan IP Address VPS (AUTO DETECT)
 dapatkan_ip_vps() {
     local ip_public=$(curl -s -4 ifconfig.me 2>/dev/null || curl -s -4 icanhazip.com 2>/dev/null || ip addr show $INTERFACE | grep -oP 'inet \K[\d.]+' | head -1)
     local ip_local=$(hostname -I | awk '{print $1}')
@@ -74,7 +60,7 @@ dapatkan_info_sistem() {
     if [ -z "$first_date" ]; then
         first_date="Data belum tersedia"
     fi
-    echo "$hostname | $os | ⏰ $uptime"
+    echo "🖥️ $hostname | $os | ⏰ $uptime"
     echo "📅 Data sejak: $first_date"
 }
 
@@ -122,7 +108,7 @@ dapatkan_total_kumulatif() {
     local rx_value=$(echo "$total_line" | awk '{print $2}')
     local rx_unit=$(echo "$total_line" | awk '{print $3}')
     local tx_value=$(echo "$total_line" | awk '{print $5}')
-    local tx_unit=$(echo "$total_line" | awk '{print $6}")
+    local tx_unit=$(echo "$total_line" | awk '{print $6}')
     local total_value=$(echo "$total_line" | awk '{print $8}')
     local total_unit=$(echo "$total_line" | awk '{print $9}')
     if [ -z "$rx_value" ] || [ "$rx_value" = "total:" ]; then
@@ -159,32 +145,31 @@ kirim_pesan_telegram() {
 jalankan_backup2() {
     catat_log "Menjalankan command backup2..."
     
-    kirim_pesan_telegram "🔄 <b>Memulai Backup...</b>
-⏰ $(date '+%H:%M:%S')
-
-[ INFO ] Processing...
-[ INFO ] Mohon Ditunggu..."
+    # Kirim notifikasi mulai backup
+    kirim_pesan_telegram "🔄 <b>Memulai Backup...</b>\n⏰ $(date '+%H:%M:%S')\n\n[ INFO ] Processing...\n[ INFO ] Mohon Ditunggu..."
     
+    # ⚡ JALANKAN BACKUP2 ASLI DAN TANGKAP OUTPUT ⚡
     local backup_output=$(/usr/local/sbin/backup2 2>&1)
+    
+    # Cek apakah backup berhasil
     local exit_code=$?
     
     catat_log "Backup selesai. Exit code: $exit_code"
+    catat_log "Output: $backup_output"
     
-    local clean_output=$(echo "$backup_output" | sed 's/\\n/\n/g')
-    
+    # Format output untuk Telegram
     if [ $exit_code -eq 0 ]; then
-        kirim_pesan_telegram "✅ <b>Backup Berhasil!</b>
-
-<code>$clean_output</code>
-
-⏰ Selesai: $(date '+%H:%M:%S')"
+        # Backup sukses
+        if [ -n "$backup_output" ]; then
+            # Jika ada output, kirim outputnya
+            kirim_pesan_telegram "✅ <b>Backup Berhasil!</b>\n\n<code>$backup_output</code>\n\n⏰ Selesai: $(date '+%H:%M:%S')"
+        else
+            # Jika tidak ada output, kirim pesan default
+            kirim_pesan_telegram "✅ <b>Backup Berhasil!</b>\n\n⏰ Selesai: $(date '+%H:%M:%S')"
+        fi
     else
-        kirim_pesan_telegram "❌ <b>Backup Gagal!</b>
-Exit Code: $exit_code
-
-<code>$clean_output</code>
-
-⏰ Selesai: $(date '+%H:%M:%S')"
+        # Backup gagal
+        kirim_pesan_telegram "❌ <b>Backup Gagal!</b>\nExit Code: $exit_code\n\n<code>$backup_output</code>\n\n⏰ Selesai: $(date '+%H:%M:%S')"
     fi
     
     echo "$backup_output"
@@ -197,16 +182,11 @@ proses_command() {
     
     case "$command" in
         "/start")
-            kirim_pesan_telegram "🤖 <b>BWM Bot Aktif!</b>
-
-Perintah yang tersedia:
-• /status - Status bandwidth
-• /backup2 - Jalankan backup
-• /info - Info server
-• /help - Bantuan"
+            kirim_pesan_telegram "🤖 <b>BWM Bot Aktif!</b>\n\nPerintah yang tersedia:\n• /status - Status bandwidth\n• /backup2 - Jalankan backup\n• /info - Info server\n• /help - Bantuan"
             ;;
             
         "/status"|"/bwm")
+            # Jalankan monitoring seperti biasa
             main
             ;;
             
@@ -217,30 +197,15 @@ Perintah yang tersedia:
         "/info")
             local info_sistem=$(dapatkan_info_sistem)
             local info_ip=$(dapatkan_ip_vps)
-            kirim_pesan_telegram "🖥️ <b>Informasi Server</b>
-
-<code>$info_sistem</code>
-<code>$info_ip</code>
-
-⏰ $(date '+%H:%M:%S')"
+            kirim_pesan_telegram "🖥️ <b>Informasi Server</b>\n\n<code>$info_sistem</code>\n<code>$info_ip</code>\n\n⏰ $(date '+%H:%M:%S')"
             ;;
             
         "/help")
-            kirim_pesan_telegram "📋 <b>Bantuan BWM Bot</b>
-
-Perintah:
-• /status - Cek bandwidth
-• /backup2 - Jalankan backup
-• /info - Info server
-• /help - Bantuan ini
-
-⚡ Bot aktif: $(uptime -p)"
+            kirim_pesan_telegram "📋 <b>Bantuan BWM Bot</b>\n\nPerintah:\n• /status - Cek bandwidth\n• /backup2 - Jalankan backup\n• /info - Info server\n• /help - Bantuan ini\n\n⚡ Bot aktif: $(uptime -p)"
             ;;
             
         *)
-            kirim_pesan_telegram "❌ Perintah tidak dikenali: <code>$command</code>
-
-Ketik /help untuk melihat perintah yang tersedia."
+            kirim_pesan_telegram "❌ Perintah tidak dikenali: <code>$command</code>\n\nKetik /help untuk melihat perintah yang tersedia."
             ;;
     esac
 }
@@ -253,9 +218,11 @@ listen_commands() {
     local last_update_id=0
     
     while true; do
+        # Get updates from Telegram
         local response=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=$((last_update_id + 1))&timeout=30")
         
         if echo "$response" | jq -e '.result | length > 0' >/dev/null; then
+            # Process each update
             local update_count=$(echo "$response" | jq '.result | length')
             
             for ((i=0; i<update_count; i++)); do
@@ -263,11 +230,15 @@ listen_commands() {
                 local chat_id=$(echo "$response" | jq -r ".result[$i].message.chat.id")
                 local text=$(echo "$response" | jq -r ".result[$i].message.text")
                 
+                # Update last_update_id
                 last_update_id=$update_id
                 
+                # Only process if from authorized chat
                 if [ "$chat_id" = "$CHAT_ID" ]; then
                     catat_log "Received command: $text from $chat_id"
                     echo "📩 Command received: $text"
+                    
+                    # Process the command
                     proses_command "$text"
                 else
                     catat_log "Unauthorized access attempt from: $chat_id"
@@ -302,7 +273,7 @@ main() {
     fi
 
     local PESAN="<b>📊 LAPORAN BANDWIDTH HARIAN</b>
-
+    
 <b>🖥️ INFORMASI SERVER:</b>
 <code>$info_sistem</code>
 <code>$info_ip</code>
@@ -322,14 +293,14 @@ main() {
         local limit_bulanan_gib=$(echo "$BULANAN_LIMIT * 1024" | bc)
         local persentase=$(echo "scale=2; ($total_kumulatif / $limit_bulanan_gib) * 100" | bc 2>/dev/null || echo "0")
         PESAN="${PESAN}
-
+        
 <b>📊 LIMIT BULANAN (${BULANAN_LIMIT} TB):</b>
 • <b>Digunakan:</b> <code>${persentase}%</code>
 • <b>Sisa Kuota:</b> <code>$(echo "scale=2; $limit_bulanan_gib - $total_kumulatif" | bc) GiB</code>"
     fi
 
     PESAN="${PESAN}
-
+    
 <b>⏰ Update:</b> <code>$(date +'%H:%M:%S')</code>"
 
     if kirim_pesan_telegram "$PESAN"; then
@@ -341,7 +312,7 @@ main() {
     fi
 }
 
-# Main execution
+# Check if we should run listener or normal monitoring
 if [ "$1" = "listen" ] || [ "$1" = "daemon" ]; then
     listen_commands
 elif [ "$1" = "backup" ] || [ "$1" = "backup2" ]; then
@@ -349,6 +320,7 @@ elif [ "$1" = "backup" ] || [ "$1" = "backup2" ]; then
 elif [ "$1" = "status" ]; then
     main
 else
+    # Default: show help
     echo "🤖 BWM Bot Interaktif"
     echo "Usage:"
     echo "  bwm              - Monitoring bandwidth"
@@ -367,7 +339,8 @@ SCRIPTEOF
 
 chmod +x /usr/local/bin/bwm
 
-# Create systemd service
+# Create systemd service for bot listener
+echo "📁 Membuat service untuk bot listener..."
 cat > /etc/systemd/system/bwm-bot.service << SERVICEEOF
 [Unit]
 Description=BWM Telegram Bot Listener
@@ -379,38 +352,52 @@ User=root
 ExecStart=/usr/local/bin/bwm listen
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 SERVICEEOF
 
-# Setup log and cron
+# Setup log file
 touch /var/log/bwm.log
 chmod 644 /var/log/bwm.log
-(crontab -l 2>/dev/null; echo "0 19 * * * /usr/local/bin/bwm") | crontab -
+
+# Setup crontab for daily monitoring
+(crontab -l 2>/dev/null | grep -v "/usr/local/bin/bwm"; echo "0 19 * * * /usr/local/bin/bwm") | crontab -
 
 # Start services
 systemctl daemon-reload
 systemctl enable bwm-bot
 systemctl start bwm-bot
 
-# Verification
-sleep 3
 echo ""
-echo "🎉 INSTALASI BERHASIL!"
+echo "🎉 BOT INTERAKTIF BERHASIL DIINSTAL!"
 echo ""
-echo "📋 TEST COMMANDS:"
-echo "  systemctl status bwm-bot"
-echo "  bwm status"
-echo "  bwm backup2"
+echo "🤖 PERINTAH TELEGRAM:"
+echo "  /start   - Mulai bot"
+echo "  /status  - Cek bandwidth"
+echo "  /backup2 - ⚡ JALANKAN BACKUP ⚡"
+echo "  /info    - Info server"
+echo "  /help    - Bantuan"
 echo ""
-echo "📱 TELEGRAM COMMANDS:"
-echo "  /start, /info, /backup2"
+echo "⚙️  PERINTAH DI VPS:"
+echo "  bwm              - Monitoring"
+echo "  bwm listen       - Jalankan bot"
+echo "  bwm backup2      - Backup manual"
+echo "  bwm status       - Status"
+echo ""
+echo "📊 SERVICE:"
+echo "  systemctl status bwm-bot  - Cek status bot"
+echo "  journalctl -u bwm-bot -f  - Lihat log live"
+echo "  tail -f /var/log/bwm.log  - Lihat log file"
 echo ""
 
-# Initial test
+# Test run
+sleep 3
+echo "🚀 Testing bot..."
 /usr/local/bin/bwm status
 
 EOF
 
-chmod +x bwm-install.sh
+bash /tmp/bwm_complete.sh
